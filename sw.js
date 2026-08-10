@@ -1,5 +1,5 @@
 // 観測記録 — オフライン対応のための最小限のService Worker
-const CACHE = "kansoku-v1";
+const CACHE = "kansoku-v3";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
