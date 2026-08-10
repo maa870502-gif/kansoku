@@ -47,6 +47,8 @@
   }
   .entry:hover{background:var(--surface)}
   .node{position:absolute;left:-6px;top:20px;width:11px;height:11px;border-radius:50%;background:var(--c);box-shadow:0 0 10px color-mix(in srgb,var(--c) 40%,transparent)}
+  .node.ev{border-radius:2px;transform:rotate(45deg)}
+  .e-tag{display:inline-block;font-size:10.5px;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:4px;padding:1px 7px;margin-bottom:3px;letter-spacing:.1em}
   .e-month{font-size:11px;color:var(--text-muted);letter-spacing:.08em;display:block}
   .e-title{font-family:'Shippori Mincho',serif;font-size:18px;font-weight:700;line-height:1.4;display:block}
   .e-artist{font-size:12.5px;color:var(--c);display:block;margin-top:2px}
@@ -109,13 +111,16 @@
 <div class="sheet-wrap" id="form-wrap">
   <div class="sheet">
     <h2 id="form-title">新しい観測</h2>
-    <label>曲名
-      <input id="f-title" placeholder="例: 過去を喰らう">
+    <label>記録の種類
+      <div class="pick" id="f-type" role="radiogroup" aria-label="記録の種類"></div>
+    </label>
+    <label>タイトル(曲名・イベント名)
+      <input id="f-title" placeholder="例: 過去を喰らう / 不可解四(重)">
     </label>
     <label>アーティスト
       <div class="pick" id="f-artist" role="radiogroup" aria-label="アーティスト"></div>
     </label>
-    <label>好きになった時期
+    <label>好きになった時期・参加した時期
       <input id="f-month" type="month">
     </label>
     <label>きっかけ・メモ(任意)
@@ -171,6 +176,12 @@
     { id:"rim",  name:"理芽",       color:"#5DC656" },
     { id:"haru", name:"春猿火",     color:"#FD8537" },
     { id:"koko", name:"幸祜",       color:"#22D1CA" },
+    { id:"kamitsubaki", name:"神椿", color:"#FD91A4" },
+  ];
+  // 記録の種類: 曲 / イベント(ライブ・コラボ・展示など)
+  const TYPES = [
+    { id:"song",  name:"曲",       color:"#C7BFD0" },
+    { id:"event", name:"イベント", color:"#FD91A4" },
   ];
   const NAME_TO_ID = Object.fromEntries(ARTISTS.map(a => [a.name, a.id]));
   NAME_TO_ID["vwp"] = "vwp";
@@ -275,10 +286,12 @@
         year = y;
       }
       const a = artistOf(e.artist);
+      const isEv = e.type === "event";
       html += `<button class="entry" data-id="${e.id}" style="--c:${a.color}" aria-label="${esc(e.title)} を編集">
-        <span class="node"></span>
+        <span class="node${isEv ? " ev" : ""}"></span>
         <span style="min-width:0">
           <span class="e-month">${fmtMonth(e.month)}</span>
+          ${isEv ? `<span class="e-tag">イベント</span>` : ""}
           <span class="e-title">${esc(e.title)}</span>
           <span class="e-artist">${a.name}</span>
           ${e.memo ? `<span class="e-memo">${esc(e.memo)}</span>` : ""}
@@ -294,6 +307,11 @@
   function renderArtistPick(sel){
     $("f-artist").innerHTML = ARTISTS.map(a =>
       `<button type="button" class="chip" data-a="${a.id}" style="--c:${a.color}" aria-pressed="${sel===a.id}">${a.name}</button>`
+    ).join("");
+  }
+  function renderTypePick(sel){
+    $("f-type").innerHTML = TYPES.map(t =>
+      `<button type="button" class="chip" data-t="${t.id}" style="--c:${t.color}" aria-pressed="${sel===t.id}">${t.name}</button>`
     ).join("");
   }
   function renderPreview(src){
@@ -314,6 +332,7 @@
     $("f-image").value = "";
     renderPreview(entry && imageMap.has(entry.id) ? imageMap.get(entry.id) : null);
     $("f-delete").hidden = !entry;
+    renderTypePick(entry ? (entry.type || "song") : "song");
     renderArtistPick(entry ? entry.artist : "kaf");
     $("form-wrap").classList.add("open");
     $("fab").hidden = true;
@@ -343,6 +362,7 @@
         entries.push({
           id,
           title: String(r.title), artist,
+          type: (r.type === "イベント" || r.type === "event") ? "event" : "song",
           month: /^\d{4}-\d{2}$/.test(r.month||"") ? r.month : nowMonth(),
           memo: r.memo ? String(r.memo) : "",
         });
@@ -372,12 +392,12 @@
   $("io-import").addEventListener("click", runImport);
   $("io-export").addEventListener("click", () => {
     $("io-text").value = JSON.stringify(
-      entries.map(({id, artist, ...r}) => ({...r, artist: artistOf(artist).name})), null, 2);
-    $("io-msg").textContent = `現在の記録 ${entries.length} 曲を書き出しました(画像なし)。全選択してコピーしてください。`;
+      entries.map(({id, artist, type, ...r}) => ({...r, type: type === "event" ? "イベント" : "曲", artist: artistOf(artist).name})), null, 2);
+    $("io-msg").textContent = `現在の記録 ${entries.length} 件を書き出しました(画像なし)。全選択してコピーしてください。`;
   });
   $("io-download").addEventListener("click", () => {
-    const data = entries.map(({id, artist, ...r}) => {
-      const o = {...r, artist: artistOf(artist).name};
+    const data = entries.map(({id, artist, type, ...r}) => {
+      const o = {...r, type: type === "event" ? "イベント" : "曲", artist: artistOf(artist).name};
       if (imageMap.has(id)) o.image = imageMap.get(id);
       return o;
     });
@@ -412,6 +432,10 @@
     const b = ev.target.closest("[data-a]");
     if (b) renderArtistPick(b.dataset.a);
   });
+  $("f-type").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-t]");
+    if (b) renderTypePick(b.dataset.t);
+  });
   $("filters").addEventListener("click", ev => {
     const b = ev.target.closest("[data-f]");
     if (b){ filter = b.dataset.f; render(); }
@@ -425,7 +449,8 @@
     const month = $("f-month").value;
     if (!title || !month) return;
     const sel = $("f-artist").querySelector('[aria-pressed="true"]');
-    const data = { title, artist: sel ? sel.dataset.a : "kaf", month, memo: $("f-memo").value.trim() };
+    const selType = $("f-type").querySelector('[aria-pressed="true"]');
+    const data = { title, artist: sel ? sel.dataset.a : "kaf", type: selType ? selType.dataset.t : "song", month, memo: $("f-memo").value.trim() };
     let id = editingId;
     if (id){
       entries = entries.map(e => e.id === id ? {...e, ...data} : e);
