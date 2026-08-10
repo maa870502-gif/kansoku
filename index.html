@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0F0A16">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>観測記録 — Song Journey</title>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* KAF Design Tokens — theme.utility (dark) + viz.categorical (dark canvas) */
+  :root{
+    --bg-base:#0F0A16; --bg-subtle:#291D2A; --surface:#1A1422; --border:#2E2438;
+    --text-primary:#FAFAFB; --text-secondary:#C7BFD0; --text-muted:#8A848B;
+    --neutral-400:#A39DA5; --neutral-700:#59545A;
+    --primary:#EC3331; --accent:#FD91A4; --danger:#FF6F6B;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; color:var(--text-primary);
+    background:radial-gradient(1200px 600px at 50% -10%, var(--bg-subtle) 0%, var(--bg-base) 55%);
+    font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',sans-serif;
+    padding:0 0 96px;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:0 20px}
+  header{padding-top:40px}
+  .eyebrow{font-size:11px;letter-spacing:.25em;color:var(--text-muted)}
+  h1{font-family:'Shippori Mincho',serif;font-size:34px;font-weight:700;margin:8px 0 6px;letter-spacing:.08em}
+  .sub{font-size:13px;color:var(--text-secondary);margin:0;line-height:1.7}
+  .count{font-size:12px;color:var(--text-muted);margin-top:10px}
+  .filters{display:flex;gap:8px;overflow-x:auto;padding:12px 0}
+  .chip{
+    border:1px solid var(--border);background:transparent;color:var(--text-secondary);
+    border-radius:999px;padding:6px 14px;font-size:13px;cursor:pointer;
+    white-space:nowrap;font-family:inherit;
+  }
+  .chip[aria-pressed="true"]{border-color:var(--c);color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent)}
+  .year{font-family:'Shippori Mincho',serif;font-size:20px;color:var(--text-secondary);margin:22px 0 10px;letter-spacing:.1em}
+  .rail{border-left:1px solid var(--border);margin-left:7px;display:flex;flex-direction:column}
+  .entry{
+    position:relative;display:flex;gap:14px;align-items:flex-start;text-align:left;
+    background:transparent;border:none;color:inherit;font-family:inherit;
+    padding:12px 12px 12px 20px;border-radius:10px;cursor:pointer;width:100%;
+  }
+  .entry:hover{background:var(--surface)}
+  .node{position:absolute;left:-6px;top:20px;width:11px;height:11px;border-radius:50%;background:var(--c);box-shadow:0 0 10px color-mix(in srgb,var(--c) 40%,transparent)}
+  .e-month{font-size:11px;color:var(--text-muted);letter-spacing:.08em;display:block}
+  .e-title{font-family:'Shippori Mincho',serif;font-size:18px;font-weight:700;line-height:1.4;display:block}
+  .e-artist{font-size:12.5px;color:var(--c);display:block;margin-top:2px}
+  .e-memo{font-size:13px;color:var(--neutral-400);line-height:1.65;margin-top:4px;display:block}
+  .empty{text-align:center;color:var(--text-muted);font-size:14px;line-height:2;padding:64px 0}
+  .fab{
+    position:fixed;left:50%;transform:translateX(-50%);bottom:24px;
+    background:var(--primary);color:var(--text-primary);border:none;border-radius:999px;
+    padding:13px 26px;font-size:15px;font-family:inherit;cursor:pointer;
+    box-shadow:0 6px 24px rgba(236,51,49,.33);
+  }
+  .textbtn{background:transparent;border:1px solid var(--border);color:var(--text-secondary);
+    border-radius:8px;padding:8px 14px;font-size:12.5px;font-family:inherit;cursor:pointer;margin-top:12px}
+  .sheet-wrap{position:fixed;inset:0;background:rgba(15,10,22,.8);display:none;align-items:flex-end;justify-content:center;z-index:10}
+  .sheet-wrap.open{display:flex}
+  .sheet{width:100%;max-width:560px;background:var(--surface);border-radius:18px 18px 0 0;padding:22px 20px 28px;max-height:88vh;overflow-y:auto}
+  .sheet h2{font-family:'Shippori Mincho',serif;font-size:19px;font-weight:700;margin:0 0 14px}
+  label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--text-secondary);margin-bottom:14px}
+  input,textarea{
+    background:var(--bg-base);border:1px solid var(--border);border-radius:8px;
+    color:var(--text-primary);padding:11px 12px;font-size:15px;font-family:inherit;width:100%;
+  }
+  textarea{resize:vertical}
+  input:focus,textarea:focus{border-color:var(--accent);outline:none}
+  .pick{display:flex;flex-wrap:wrap;gap:8px}
+  .actions{display:flex;gap:10px;align-items:center;margin-top:6px}
+  .spacer{flex:1}
+  .ghost{background:transparent;border:1px solid var(--border);color:var(--text-secondary);border-radius:8px;padding:10px 16px;font-size:14px;font-family:inherit;cursor:pointer}
+  .ghost.danger{color:var(--danger);border-color:#4A2730}
+  .primary{background:var(--primary);border:none;color:var(--text-primary);border-radius:8px;padding:10px 20px;font-size:14px;font-family:inherit;cursor:pointer}
+  .primary:disabled{opacity:.4;cursor:default}
+  .msg{font-size:13px;color:var(--text-secondary);margin-top:10px}
+  .e-img{display:block;max-width:100%;border-radius:8px;border:1px solid var(--border);margin-top:8px}
+  #f-preview img{display:block;max-width:100%;border-radius:8px;border:1px solid var(--border)}
+  footer{text-align:center;font-size:11px;color:var(--neutral-700);padding:32px 20px 0}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (prefers-reduced-motion:no-preference){
+    .entry{transition:background .15s ease}
+    .fab{transition:transform .15s ease}
+    .fab:active{transform:scale(.97)}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">SONG JOURNEY — KAMITSUBAKI</div>
+    <h1>観測記録</h1>
+    <p class="sub">認知したその日から、心に残った曲の遷移をここに。</p>
+    <div class="count" id="count"></div>
+    <button class="textbtn" id="open-io">まとめて取り込む・書き出す</button>
+  </header>
+  <div class="filters" id="filters" role="group" aria-label="アーティストで絞り込み"></div>
+  <main id="timeline"></main>
+</div>
+
+<button class="fab" id="fab" aria-label="曲を追加">＋ 曲を記録する</button>
+
+<!-- 追加・編集シート -->
+<div class="sheet-wrap" id="form-wrap">
+  <div class="sheet">
+    <h2 id="form-title">新しい観測</h2>
+    <label>曲名
+      <input id="f-title" placeholder="例: 過去を喰らう">
+    </label>
+    <label>アーティスト
+      <div class="pick" id="f-artist" role="radiogroup" aria-label="アーティスト"></div>
+    </label>
+    <label>好きになった時期
+      <input id="f-month" type="month">
+    </label>
+    <label>きっかけ・メモ(任意)
+      <textarea id="f-memo" rows="3" placeholder="どこで出会ったか、どこに惹かれたか"></textarea>
+    </label>
+    <label>画像(任意) — スクショやジャケットなど
+      <input id="f-image" type="file" accept="image/*">
+    </label>
+    <div id="f-preview" style="margin-bottom:14px"></div>
+    <div class="actions">
+      <button class="ghost danger" id="f-delete" hidden>削除</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="f-close">閉じる</button>
+      <button class="primary" id="f-save">記録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 取り込み・書き出しシート -->
+<div class="sheet-wrap" id="io-wrap">
+  <div class="sheet">
+    <h2>まとめて取り込む・書き出す</h2>
+    <p class="sub" style="margin-bottom:12px">
+      JSON形式のリストを貼り付けて「取り込む」。同じ曲は重複して追加されません。
+      テキストの書き出しは軽い控えに、ファイルのダウンロードは画像込みの完全バックアップに使ってください。
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="textbtn" id="io-export" style="margin:0">テキストで書き出す</button>
+      <button class="textbtn" id="io-download" style="margin:0">画像込みでダウンロード</button>
+    </div>
+    <label style="margin-bottom:10px">バックアップファイルから取り込む
+      <input id="io-file" type="file" accept=".json,application/json">
+    </label>
+    <textarea id="io-text" rows="7" style="font-size:13px" placeholder='[{"title":"曲名","artist":"花譜","month":"2025-12","memo":"…"}]'></textarea>
+    <div class="msg" id="io-msg"></div>
+    <div class="actions">
+      <span class="spacer"></span>
+      <button class="ghost" id="io-close">閉じる</button>
+      <button class="primary" id="io-import">取り込む</button>
+    </div>
+  </div>
+</div>
+
+<footer>記録はこの端末のブラウザ内に保存されます。端末やブラウザを替えるときは書き出しでバックアップを。</footer>
+
+<script>
+(() => {
+  // viz.categorical — dark canvas
+  const ARTISTS = [
+    { id:"kaf",  name:"花譜",       color:"#EE372A" },
+    { id:"ise",  name:"ヰ世界情緒", color:"#527AFD" },
+    { id:"vwp",  name:"VWP",        color:"#9B4BF5" },
+    { id:"rim",  name:"理芽",       color:"#5DC656" },
+    { id:"haru", name:"春猿火",     color:"#FD8537" },
+    { id:"koko", name:"幸祜",       color:"#22D1CA" },
+  ];
+  const NAME_TO_ID = Object.fromEntries(ARTISTS.map(a => [a.name, a.id]));
+  NAME_TO_ID["vwp"] = "vwp";
+  const artistOf = id => ARTISTS.find(a => a.id === id) || ARTISTS[2];
+  const KEY = "kamitsubaki-song-journey";
+
+  // ---- 画像(IndexedDB) ----
+  // 画像はlocalStorageには大きすぎるため、IndexedDBに別置きする。
+  const IMG_DB = "kansoku-images";
+  let imageMap = new Map();   // id -> dataURL(表示用キャッシュ)
+  let pendingImage;           // undefined=変更なし / null=削除 / string=新画像
+
+  function withStore(mode, fn){
+    return new Promise((res, rej) => {
+      const open = indexedDB.open(IMG_DB, 1);
+      open.onupgradeneeded = () => open.result.createObjectStore("images");
+      open.onerror = () => rej(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction("images", mode);
+        fn(tx.objectStore("images"));
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror = () => { db.close(); rej(tx.error); };
+      };
+    });
+  }
+  const imgSet = (id, v) => withStore("readwrite", s => s.put(v, id));
+  const imgDel = id => withStore("readwrite", s => s.delete(id));
+  function loadImages(){
+    return withStore("readonly", s => {
+      const req = s.openCursor();
+      req.onsuccess = () => {
+        const c = req.result;
+        if (c){ imageMap.set(c.key, c.value); c.continue(); }
+      };
+    }).catch(() => {});
+  }
+
+  // 長辺900pxのJPEGに圧縮して容量を抑える
+  function compress(file){
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 900;
+        const s = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * s);
+        c.height = Math.round(img.height * s);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(img.src);
+        res(c.toDataURL("image/jpeg", 0.8));
+      };
+      img.onerror = rej;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  let entries = [];
+  let filter = "all";
+  let editingId = null;
+
+  // ---- 保存・読込(localStorage) ----
+  function load(){
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) entries = JSON.parse(raw);
+    } catch(e){ entries = []; }
+  }
+  function save(){
+    try { localStorage.setItem(KEY, JSON.stringify(entries)); }
+    catch(e){ alert("保存に失敗しました。ブラウザのプライベートモードでは記録が残らないことがあります。"); }
+  }
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const fmtMonth = ym => { const [y,m] = ym.split("-"); return `${y}年${parseInt(m,10)}月`; };
+  const nowMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
+
+  // ---- 描画 ----
+  function renderFilters(){
+    const items = [{id:"all", name:"すべて", color:"#A39DA5"}, ...ARTISTS];
+    $("filters").innerHTML = items.map(a =>
+      `<button class="chip" data-f="${a.id}" style="--c:${a.color}" aria-pressed="${filter===a.id}">${a.name}</button>`
+    ).join("");
+  }
+  function render(){
+    renderFilters();
+    $("count").textContent = entries.length ? `${entries.length} 曲を観測中` : "";
+    const list = entries
+      .filter(e => filter==="all" || e.artist===filter)
+      .slice().sort((a,b) => a.month < b.month ? -1 : a.month > b.month ? 1 : 0);
+    if (!list.length){
+      $("timeline").innerHTML = `<div class="empty">まだ記録がありません。<br>最初に好きになった一曲から、始めてみましょう。</div>`;
+      return;
+    }
+    let html = "", year = "";
+    for (const e of list){
+      const y = e.month.split("-")[0];
+      if (y !== year){
+        if (year) html += `</div>`;
+        html += `<div class="year">${y}</div><div class="rail">`;
+        year = y;
+      }
+      const a = artistOf(e.artist);
+      html += `<button class="entry" data-id="${e.id}" style="--c:${a.color}" aria-label="${esc(e.title)} を編集">
+        <span class="node"></span>
+        <span style="min-width:0">
+          <span class="e-month">${fmtMonth(e.month)}</span>
+          <span class="e-title">${esc(e.title)}</span>
+          <span class="e-artist">${a.name}</span>
+          ${e.memo ? `<span class="e-memo">${esc(e.memo)}</span>` : ""}
+          ${imageMap.has(e.id) ? `<img class="e-img" src="${imageMap.get(e.id)}" alt="">` : ""}
+        </span>
+      </button>`;
+    }
+    html += `</div>`;
+    $("timeline").innerHTML = html;
+  }
+
+  // ---- フォーム ----
+  function renderArtistPick(sel){
+    $("f-artist").innerHTML = ARTISTS.map(a =>
+      `<button type="button" class="chip" data-a="${a.id}" style="--c:${a.color}" aria-pressed="${sel===a.id}">${a.name}</button>`
+    ).join("");
+  }
+  function renderPreview(src){
+    $("f-preview").innerHTML = src
+      ? `<img src="${src}" alt="添付画像"><button type="button" class="ghost danger" id="f-img-del" style="margin-top:8px">画像を外す</button>`
+      : "";
+    const d = $("f-img-del");
+    if (d) d.addEventListener("click", () => { pendingImage = null; $("f-image").value = ""; renderPreview(null); });
+  }
+  function openForm(entry){
+    editingId = entry ? entry.id : null;
+    pendingImage = undefined;
+    $("form-title").textContent = entry ? "記録を編集" : "新しい観測";
+    $("f-save").textContent = entry ? "更新する" : "記録する";
+    $("f-title").value = entry ? entry.title : "";
+    $("f-month").value = entry ? entry.month : nowMonth();
+    $("f-memo").value = entry ? (entry.memo || "") : "";
+    $("f-image").value = "";
+    renderPreview(entry && imageMap.has(entry.id) ? imageMap.get(entry.id) : null);
+    $("f-delete").hidden = !entry;
+    renderArtistPick(entry ? entry.artist : "kaf");
+    $("form-wrap").classList.add("open");
+    $("fab").hidden = true;
+    $("f-title").focus();
+  }
+  function closeSheets(){
+    $("form-wrap").classList.remove("open");
+    $("io-wrap").classList.remove("open");
+    $("fab").hidden = false;
+    editingId = null;
+  }
+
+  // ---- 取り込み・書き出し ----
+  function runImport(){
+    const msg = $("io-msg");
+    try {
+      const raw = JSON.parse($("io-text").value.replace(/```json|```/g,"").trim());
+      if (!Array.isArray(raw)) throw 0;
+      const seen = new Set(entries.map(e => e.title + "__" + e.artist));
+      let added = 0;
+      const imgJobs = [];
+      for (const r of raw){
+        if (!r.title) continue;
+        const artist = NAME_TO_ID[r.artist] || (ARTISTS.some(a => a.id===r.artist) ? r.artist : "vwp");
+        if (seen.has(r.title + "__" + artist)) continue;
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+        entries.push({
+          id,
+          title: String(r.title), artist,
+          month: /^\d{4}-\d{2}$/.test(r.month||"") ? r.month : nowMonth(),
+          memo: r.memo ? String(r.memo) : "",
+        });
+        if (typeof r.image === "string" && r.image.startsWith("data:image")){
+          imageMap.set(id, r.image);
+          imgJobs.push(imgSet(id, r.image));
+        }
+        seen.add(r.title + "__" + artist);
+        added++;
+      }
+      if (!added){ msg.textContent = "追加できる曲がありませんでした(すでに記録済みの可能性があります)。"; return; }
+      save();
+      Promise.allSettled(imgJobs).then(render);
+      render();
+      msg.textContent = `${added} 曲を取り込みました。`;
+      $("io-text").value = "";
+    } catch(e){
+      msg.textContent = "形式を読み取れませんでした。JSONの配列を貼り付けてください。";
+    }
+  }
+
+  // ---- イベント ----
+  $("fab").addEventListener("click", () => openForm(null));
+  $("f-close").addEventListener("click", closeSheets);
+  $("io-close").addEventListener("click", closeSheets);
+  $("open-io").addEventListener("click", () => { $("io-msg").textContent=""; $("io-wrap").classList.add("open"); $("fab").hidden = true; });
+  $("io-import").addEventListener("click", runImport);
+  $("io-export").addEventListener("click", () => {
+    $("io-text").value = JSON.stringify(
+      entries.map(({id, artist, ...r}) => ({...r, artist: artistOf(artist).name})), null, 2);
+    $("io-msg").textContent = `現在の記録 ${entries.length} 曲を書き出しました(画像なし)。全選択してコピーしてください。`;
+  });
+  $("io-download").addEventListener("click", () => {
+    const data = entries.map(({id, artist, ...r}) => {
+      const o = {...r, artist: artistOf(artist).name};
+      if (imageMap.has(id)) o.image = imageMap.get(id);
+      return o;
+    });
+    const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const d = new Date();
+    a.download = `観測記録_backup_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    $("io-msg").textContent = "画像込みのバックアップをダウンロードしました。";
+  });
+  $("io-file").addEventListener("change", ev => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { $("io-text").value = reader.result; runImport(); ev.target.value = ""; };
+    reader.readAsText(f);
+  });
+  $("f-image").addEventListener("change", async ev => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    try {
+      pendingImage = await compress(f);
+      renderPreview(pendingImage);
+    } catch(e){
+      $("io-msg").textContent = "";
+      alert("画像を読み込めませんでした。別のファイルで試してください。");
+    }
+  });
+  $("f-artist").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-a]");
+    if (b) renderArtistPick(b.dataset.a);
+  });
+  $("filters").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-f]");
+    if (b){ filter = b.dataset.f; render(); }
+  });
+  $("timeline").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-id]");
+    if (b) openForm(entries.find(e => e.id === b.dataset.id));
+  });
+  $("f-save").addEventListener("click", () => {
+    const title = $("f-title").value.trim();
+    const month = $("f-month").value;
+    if (!title || !month) return;
+    const sel = $("f-artist").querySelector('[aria-pressed="true"]');
+    const data = { title, artist: sel ? sel.dataset.a : "kaf", month, memo: $("f-memo").value.trim() };
+    let id = editingId;
+    if (id){
+      entries = entries.map(e => e.id === id ? {...e, ...data} : e);
+    } else {
+      id = Date.now().toString(36);
+      entries.push({ id, ...data });
+    }
+    save();
+    const finish = () => { render(); closeSheets(); };
+    if (pendingImage === null){
+      imageMap.delete(id);
+      imgDel(id).catch(() => {}).then(finish);
+    } else if (typeof pendingImage === "string"){
+      imageMap.set(id, pendingImage);
+      imgSet(id, pendingImage)
+        .catch(() => alert("画像の保存に失敗しました。文字の記録は保存されています。"))
+        .then(finish);
+    } else finish();
+  });
+  $("f-delete").addEventListener("click", () => {
+    if (!editingId) return;
+    if (!confirm("この記録を削除しますか?")) return;
+    const id = editingId;
+    entries = entries.filter(e => e.id !== id);
+    imageMap.delete(id);
+    imgDel(id).catch(() => {});
+    save(); render(); closeSheets();
+  });
+
+  load(); render();
+  loadImages().then(render);
+
+  // PWA: httpsで配信されているときだけService Workerを登録(file://では黙って何もしない)
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
