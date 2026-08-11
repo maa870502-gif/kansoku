@@ -165,7 +165,7 @@
   <div class="sheet">
     <h2>まとめて取り込む・書き出す</h2>
     <p class="sub" style="margin-bottom:12px">
-      JSON形式のリストを貼り付けて「取り込む」。同じ曲は重複して追加されません。
+      JSON形式のリストを貼り付けて「取り込む」。同じ曲名・アーティストのカードは内容が更新されます(新規は追加)。
       テキストの書き出しは軽い控えに、ファイルのダウンロードは画像込みの完全バックアップに使ってください。
     </p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -434,35 +434,44 @@
     try {
       const raw = JSON.parse($("io-text").value.replace(/```json|```/g,"").trim());
       if (!Array.isArray(raw)) throw 0;
-      const seen = new Set(entries.map(e => e.title + "__" + e.artist));
-      let added = 0;
+      // 曲名+アーティストが一致する既存カードは、飛ばさず内容を更新する
+      const byKey = new Map(entries.map(e => [e.title + "__" + e.artist, e]));
+      let added = 0, updated = 0;
       const imgJobs = [];
       for (const r of raw){
         if (!r.title) continue;
         const artist = NAME_TO_ID[r.artist] || (ARTISTS.some(a => a.id===r.artist) ? r.artist : "vwp");
-        if (seen.has(r.title + "__" + artist)) continue;
-        const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-        entries.push({
-          id,
-          title: String(r.title), artist,
+        const key = r.title + "__" + artist;
+        const fields = {
           type: (r.type === "イベント" || r.type === "event") ? "event" : "song",
           month: /^\d{4}-\d{2}$/.test(r.month||"") ? r.month : nowMonth(),
           memo: r.memo ? String(r.memo) : "",
           url: r.url ? String(r.url) : "",
           pos: typeof r.pos === "number" ? r.pos : 0,
-        });
+        };
+        let id;
+        const hit = byKey.get(key);
+        if (hit){
+          Object.assign(hit, fields);
+          id = hit.id;
+          updated++;
+        } else {
+          id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+          const e = { id, title: String(r.title), artist, ...fields };
+          entries.push(e);
+          byKey.set(key, e);
+          added++;
+        }
         if (typeof r.image === "string" && r.image.startsWith("data:image")){
           imageMap.set(id, r.image);
           imgJobs.push(imgSet(id, r.image));
         }
-        seen.add(r.title + "__" + artist);
-        added++;
       }
-      if (!added){ msg.textContent = "追加できる曲がありませんでした(すでに記録済みの可能性があります)。"; return; }
+      if (!added && !updated){ msg.textContent = "取り込める内容がありませんでした。"; return; }
       save();
       Promise.allSettled(imgJobs).then(render);
       render();
-      msg.textContent = `${added} 曲を取り込みました。`;
+      msg.textContent = `${added} 件を追加、${updated} 件を更新しました。`;
       $("io-text").value = "";
     } catch(e){
       msg.textContent = "形式を読み取れませんでした。JSONの配列を貼り付けてください。";
