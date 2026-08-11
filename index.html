@@ -38,6 +38,15 @@
     white-space:nowrap;font-family:inherit;
   }
   .chip[aria-pressed="true"]{border-color:var(--c);color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent)}
+  .toolbar{display:flex;gap:8px;overflow-x:auto;padding:0 0 12px}
+  .mhead{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:var(--text-muted);font-family:inherit;font-size:12.5px;letter-spacing:.1em;padding:12px 14px 4px 20px;cursor:pointer;width:100%;text-align:left}
+  .mcount{color:var(--neutral-700);font-size:11px}
+  .mhead .chev{margin-left:auto;border:solid var(--text-muted);border-width:0 1.5px 1.5px 0;padding:3.5px;transform:rotate(45deg);margin-top:-4px}
+  .mhead[aria-expanded="false"] .chev{transform:rotate(-45deg);margin-top:2px}
+  .mv{display:flex;flex-direction:column;gap:6px;margin-left:auto;flex-shrink:0;align-self:center}
+  .mvbtn{display:flex;align-items:center;justify-content:center;width:36px;height:32px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);font-size:13px;cursor:pointer;user-select:none}
+  .totop{position:fixed;right:16px;bottom:92px;width:42px;height:42px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary);display:none;cursor:pointer;font-size:16px;font-family:inherit;z-index:5}
+  .totop.show{display:block}
   .year{font-family:'Shippori Mincho',serif;font-size:20px;color:var(--text-secondary);margin:22px 0 10px;letter-spacing:.1em}
   .rail{border-left:1px solid var(--border);margin-left:7px;display:flex;flex-direction:column}
   .entry{
@@ -108,8 +117,11 @@
     <button class="textbtn" id="open-io">まとめて取り込む・書き出す</button>
   </header>
   <div class="filters" id="filters" role="group" aria-label="アーティストで絞り込み"></div>
+  <div class="toolbar" id="toolbar"></div>
   <main id="timeline"></main>
 </div>
+
+<button class="totop" id="totop" aria-label="一番上へ戻る">↑</button>
 
 <button class="fab" id="fab" aria-label="曲を追加">＋ 曲を記録する</button>
 
@@ -251,6 +263,34 @@
   let entries = [];
   let filter = "all";
   let editingId = null;
+  let sortDesc = false;      // false=古い順 / true=新しい順
+  let collapsed = new Set(); // たたんだ月("YYYY-MM")
+  let reorderMode = false;   // 並び替えモード
+
+  const posOf = e => (typeof e.pos === "number" ? e.pos : 0);
+
+  function loadPrefs(){
+    try {
+      const p = JSON.parse(localStorage.getItem("kansoku-prefs") || "{}");
+      sortDesc = !!p.sortDesc;
+      collapsed = new Set(p.collapsed || []);
+    } catch(e){}
+  }
+  function savePrefs(){
+    try { localStorage.setItem("kansoku-prefs", JSON.stringify({ sortDesc, collapsed: [...collapsed] })); } catch(e){}
+  }
+
+  // 同じ月の中で一つ上/下へ動かす
+  function moveEntry(id, dir){
+    const e = entries.find(x => x.id === id);
+    if (!e) return;
+    const sameMonth = entries.filter(x => x.month === e.month).sort((a,b) => posOf(a) - posOf(b));
+    sameMonth.forEach((x,i) => { x.pos = (i+1) * 10; });  // 連番を振り直してから入れ替え
+    const i = sameMonth.indexOf(e), j = i + dir;
+    if (j < 0 || j >= sameMonth.length) return;
+    const t = sameMonth[i].pos; sameMonth[i].pos = sameMonth[j].pos; sameMonth[j].pos = t;
+    save(); render();
+  }
 
   // ---- 保存・読込(localStorage) ----
   function load(){
@@ -292,30 +332,45 @@
       `<button class="chip" data-f="${a.id}" style="--c:${a.color}" aria-pressed="${filter===a.id}">${a.name}</button>`
     ).join("");
   }
+  function renderToolbar(){
+    const years = [...new Set(entries.map(e => e.month.split("-")[0]))].sort();
+    if (sortDesc) years.reverse();
+    $("toolbar").innerHTML =
+      `<button class="chip" id="t-sort" style="--c:#C7BFD0">${sortDesc ? "新しい順" : "古い順"}</button>` +
+      `<button class="chip" id="t-reorder" style="--c:#FD91A4" aria-pressed="${reorderMode}">並び替え</button>` +
+      years.map(y => `<button class="chip" data-y="${y}" style="--c:#A39DA5">${y}</button>`).join("");
+  }
   function render(){
     renderFilters();
-    $("count").textContent = entries.length ? `${entries.length} 曲を観測中` : "";
+    renderToolbar();
+    $("count").textContent = entries.length ? `${entries.length} 件を観測中` : "";
+    const dir = sortDesc ? -1 : 1;
     const list = entries
       .filter(e => filter==="all" || e.artist===filter)
-      .slice().sort((a,b) => a.month < b.month ? -1 : a.month > b.month ? 1 : 0);
+      .slice().sort((a,b) => a.month === b.month ? posOf(a) - posOf(b) : (a.month < b.month ? -1 : 1) * dir);
     if (!list.length){
       $("timeline").innerHTML = `<div class="empty">まだ記録がありません。<br>最初に好きになった一曲から、始めてみましょう。</div>`;
       return;
     }
-    let html = "", year = "";
+    let html = "", year = "", month = "", railOpen = false;
     for (const e of list){
       const y = e.month.split("-")[0];
       if (y !== year){
-        if (year) html += `</div>`;
-        html += `<div class="year">${y}</div><div class="rail">`;
-        year = y;
+        if (railOpen) html += `</div>`;
+        html += `<div class="year" id="y-${y}">${y}</div><div class="rail">`;
+        railOpen = true; year = y; month = "";
       }
+      if (e.month !== month){
+        month = e.month;
+        const cnt = list.filter(x => x.month === month).length;
+        html += `<button class="mhead" data-m="${month}" aria-expanded="${!collapsed.has(month)}">${parseInt(month.split("-")[1],10)}月<span class="mcount">${cnt}件</span><span class="chev"></span></button>`;
+      }
+      if (collapsed.has(e.month)) continue;
       const a = artistOf(e.artist);
       const isEv = e.type === "event";
       html += `<button class="entry" data-id="${e.id}" style="--c:${a.color}" aria-label="${esc(e.title)} を編集">
         <span class="node${isEv ? " ev" : ""}"></span>
         <span style="min-width:0">
-          <span class="e-month">${fmtMonth(e.month)}</span>
           ${isEv ? `<span class="e-tag">イベント</span>` : ""}
           <span class="e-title">${esc(e.title)}</span>
           <span class="e-artist">${a.name}</span>
@@ -323,9 +378,10 @@
           ${e.url ? renderLink(e) : ""}
           ${imageMap.has(e.id) ? `<img class="e-img" src="${imageMap.get(e.id)}" alt="">` : ""}
         </span>
+        ${reorderMode ? `<span class="mv"><span class="mvbtn" role="button" tabindex="0" data-move="-1" data-mid="${e.id}" aria-label="上へ">▲</span><span class="mvbtn" role="button" tabindex="0" data-move="1" data-mid="${e.id}" aria-label="下へ">▼</span></span>` : ""}
       </button>`;
     }
-    html += `</div>`;
+    if (railOpen) html += `</div>`;
     $("timeline").innerHTML = html;
   }
 
@@ -393,6 +449,7 @@
           month: /^\d{4}-\d{2}$/.test(r.month||"") ? r.month : nowMonth(),
           memo: r.memo ? String(r.memo) : "",
           url: r.url ? String(r.url) : "",
+          pos: typeof r.pos === "number" ? r.pos : 0,
         });
         if (typeof r.image === "string" && r.image.startsWith("data:image")){
           imageMap.set(id, r.image);
@@ -420,12 +477,17 @@
   $("io-import").addEventListener("click", runImport);
   $("io-export").addEventListener("click", () => {
     $("io-text").value = JSON.stringify(
-      entries.map(({id, artist, type, ...r}) => ({...r, type: type === "event" ? "イベント" : "曲", artist: artistOf(artist).name})), null, 2);
+      entries.map(({id, artist, type, pos, ...r}) => {
+        const o = {...r, type: type === "event" ? "イベント" : "曲", artist: artistOf(artist).name};
+        if (typeof pos === "number") o.pos = pos;
+        return o;
+      }), null, 2);
     $("io-msg").textContent = `現在の記録 ${entries.length} 件を書き出しました(画像なし)。全選択してコピーしてください。`;
   });
   $("io-download").addEventListener("click", () => {
-    const data = entries.map(({id, artist, type, ...r}) => {
+    const data = entries.map(({id, artist, type, pos, ...r}) => {
       const o = {...r, type: type === "event" ? "イベント" : "曲", artist: artistOf(artist).name};
+      if (typeof pos === "number") o.pos = pos;
       if (imageMap.has(id)) o.image = imageMap.get(id);
       return o;
     });
@@ -469,11 +531,32 @@
     if (b){ filter = b.dataset.f; render(); }
   });
   $("timeline").addEventListener("click", ev => {
+    const mv = ev.target.closest("[data-move]");
+    if (mv){ moveEntry(mv.dataset.mid, parseInt(mv.dataset.move, 10)); return; }
+    const mh = ev.target.closest("[data-m]");
+    if (mh){
+      const m = mh.dataset.m;
+      collapsed.has(m) ? collapsed.delete(m) : collapsed.add(m);
+      savePrefs(); render();
+      return;
+    }
     const link = ev.target.closest("[data-url]");
     if (link){ window.open(link.dataset.url, "_blank", "noopener"); return; }
     const b = ev.target.closest("[data-id]");
     if (b) openForm(entries.find(e => e.id === b.dataset.id));
   });
+  $("toolbar").addEventListener("click", ev => {
+    if (ev.target.id === "t-sort"){ sortDesc = !sortDesc; savePrefs(); render(); return; }
+    if (ev.target.id === "t-reorder"){ reorderMode = !reorderMode; render(); return; }
+    const y = ev.target.closest("[data-y]");
+    if (y){
+      const el = document.getElementById("y-" + y.dataset.y);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+  const totop = $("totop");
+  window.addEventListener("scroll", () => totop.classList.toggle("show", window.scrollY > 500), { passive: true });
+  totop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
   $("f-save").addEventListener("click", () => {
     const title = $("f-title").value.trim();
     const month = $("f-month").value;
@@ -510,6 +593,7 @@
     save(); render(); closeSheets();
   });
 
+  loadPrefs();
   load(); render();
   loadImages().then(render);
 
