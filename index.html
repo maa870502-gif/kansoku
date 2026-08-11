@@ -49,6 +49,12 @@
   .node{position:absolute;left:-6px;top:20px;width:11px;height:11px;border-radius:50%;background:var(--c);box-shadow:0 0 10px color-mix(in srgb,var(--c) 40%,transparent)}
   .node.ev{border-radius:2px;transform:rotate(45deg)}
   .e-tag{display:inline-block;font-size:10.5px;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:4px;padding:1px 7px;margin-bottom:3px;letter-spacing:.1em}
+  .e-thumb{position:relative;display:block;margin-top:8px;border-radius:8px;overflow:hidden;border:1px solid var(--border);cursor:pointer}
+  .e-thumb img{display:block;width:100%}
+  .e-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  .e-play span{width:44px;height:44px;border-radius:50%;background:rgba(15,10,22,.62);display:flex;align-items:center;justify-content:center}
+  .e-play span::after{content:"";display:block;margin-left:4px;border-style:solid;border-width:9px 0 9px 15px;border-color:transparent transparent transparent var(--text-primary)}
+  .e-link{display:inline-block;font-size:12.5px;color:var(--accent);margin-top:6px;text-decoration:underline;cursor:pointer}
   .e-month{font-size:11px;color:var(--text-muted);letter-spacing:.08em;display:block}
   .e-title{font-family:'Shippori Mincho',serif;font-size:18px;font-weight:700;line-height:1.4;display:block}
   .e-artist{font-size:12.5px;color:var(--c);display:block;margin-top:2px}
@@ -125,6 +131,9 @@
     </label>
     <label>きっかけ・メモ(任意)
       <textarea id="f-memo" rows="3" placeholder="どこで出会ったか、どこに惹かれたか"></textarea>
+    </label>
+    <label>リンク(任意) — YouTubeはサムネイル表示されます
+      <input id="f-url" type="url" placeholder="https://youtu.be/…">
     </label>
     <label>画像(任意) — スクショやジャケットなど
       <input id="f-image" type="file" accept="image/*">
@@ -260,6 +269,22 @@
   const fmtMonth = ym => { const [y,m] = ym.split("-"); return `${y}年${parseInt(m,10)}月`; };
   const nowMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
 
+  // YouTubeのURLから動画IDを取り出す(youtu.be / watch?v= / shorts / embed に対応)
+  function ytId(url){
+    const m = String(url).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/))([A-Za-z0-9_-]{11})/);
+    return m ? m[1] : null;
+  }
+  function renderLink(e){
+    const id = ytId(e.url);
+    if (id){
+      return `<span class="e-thumb" data-url="${esc(e.url)}" role="link" aria-label="動画を開く">
+        <img src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="" loading="lazy">
+        <span class="e-play"><span></span></span>
+      </span>`;
+    }
+    return `<span class="e-link" data-url="${esc(e.url)}" role="link">リンクを開く</span>`;
+  }
+
   // ---- 描画 ----
   function renderFilters(){
     const items = [{id:"all", name:"すべて", color:"#A39DA5"}, ...ARTISTS];
@@ -295,6 +320,7 @@
           <span class="e-title">${esc(e.title)}</span>
           <span class="e-artist">${a.name}</span>
           ${e.memo ? `<span class="e-memo">${esc(e.memo)}</span>` : ""}
+          ${e.url ? renderLink(e) : ""}
           ${imageMap.has(e.id) ? `<img class="e-img" src="${imageMap.get(e.id)}" alt="">` : ""}
         </span>
       </button>`;
@@ -329,6 +355,7 @@
     $("f-title").value = entry ? entry.title : "";
     $("f-month").value = entry ? entry.month : nowMonth();
     $("f-memo").value = entry ? (entry.memo || "") : "";
+    $("f-url").value = entry ? (entry.url || "") : "";
     $("f-image").value = "";
     renderPreview(entry && imageMap.has(entry.id) ? imageMap.get(entry.id) : null);
     $("f-delete").hidden = !entry;
@@ -365,6 +392,7 @@
           type: (r.type === "イベント" || r.type === "event") ? "event" : "song",
           month: /^\d{4}-\d{2}$/.test(r.month||"") ? r.month : nowMonth(),
           memo: r.memo ? String(r.memo) : "",
+          url: r.url ? String(r.url) : "",
         });
         if (typeof r.image === "string" && r.image.startsWith("data:image")){
           imageMap.set(id, r.image);
@@ -441,6 +469,8 @@
     if (b){ filter = b.dataset.f; render(); }
   });
   $("timeline").addEventListener("click", ev => {
+    const link = ev.target.closest("[data-url]");
+    if (link){ window.open(link.dataset.url, "_blank", "noopener"); return; }
     const b = ev.target.closest("[data-id]");
     if (b) openForm(entries.find(e => e.id === b.dataset.id));
   });
@@ -450,7 +480,7 @@
     if (!title || !month) return;
     const sel = $("f-artist").querySelector('[aria-pressed="true"]');
     const selType = $("f-type").querySelector('[aria-pressed="true"]');
-    const data = { title, artist: sel ? sel.dataset.a : "kaf", type: selType ? selType.dataset.t : "song", month, memo: $("f-memo").value.trim() };
+    const data = { title, artist: sel ? sel.dataset.a : "kaf", type: selType ? selType.dataset.t : "song", month, memo: $("f-memo").value.trim(), url: $("f-url").value.trim() };
     let id = editingId;
     if (id){
       entries = entries.map(e => e.id === id ? {...e, ...data} : e);
