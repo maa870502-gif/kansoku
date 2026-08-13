@@ -59,6 +59,7 @@
   <input id="ch3" value="" placeholder="理芽 (@ハンドルを貼る)" data-name="理芽" style="margin-top:8px">
   <input id="ch4" value="" placeholder="春猿火 (@ハンドルを貼る)" data-name="春猿火" style="margin-top:8px">
   <input id="ch5" value="" placeholder="幸祜 (@ハンドルを貼る)" data-name="幸祜" style="margin-top:8px">
+  <input id="ch6" value="" placeholder="KAMITSUBAKI STUDIO (@ハンドルを貼る) — 理芽等のMVの母屋" data-name="KAMITSUBAKI STUDIO" style="margin-top:8px">
 
   <button class="primary" id="run">調査開始</button>
   <div id="log"></div>
@@ -140,7 +141,7 @@
     const sums = Object.fromEntries(CATS.map(c=>[c,0]));
     let grand = 0;
 
-    for (let i = 0; i < 6; i++){
+    for (let i = 0; i < 7; i++){
       const input = $("ch"+i).value.trim();
       const name = $("ch"+i).dataset.name;
       if (!input) continue;
