@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>神椿全数調査 — Census</title>
+<style>
+  :root{
+    --bg:#0F0A16; --subtle:#291D2A; --surface:#1A1422; --border:#2E2438;
+    --txt:#FAFAFB; --txt2:#C7BFD0; --muted:#8A848B;
+    --primary:#EC3331; --accent:#FD91A4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;color:var(--txt);
+    background:radial-gradient(1200px 600px at 50% -10%, var(--subtle) 0%, var(--bg) 55%);
+    font-family:'Hiragino Kaku Gothic ProN',sans-serif;padding:0 0 80px}
+  .wrap{max-width:640px;margin:0 auto;padding:0 20px}
+  header{padding-top:36px}
+  .eyebrow{font-size:11px;letter-spacing:.25em;color:var(--muted)}
+  h1{font-size:28px;margin:8px 0 6px;letter-spacing:.06em}
+  .sub{font-size:13px;color:var(--txt2);line-height:1.7;margin:0 0 18px}
+  label{display:block;font-size:12.5px;color:var(--txt2);margin:12px 0 4px}
+  input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+    color:var(--txt);padding:10px 12px;font-size:14px}
+  input:focus{border-color:var(--accent);outline:none}
+  .row{display:flex;gap:8px;align-items:center}
+  .row input{flex:1}
+  .primary{background:var(--primary);border:none;color:var(--txt);border-radius:8px;
+    padding:12px 22px;font-size:15px;cursor:pointer;margin-top:18px;font-family:inherit}
+  .primary:disabled{opacity:.4}
+  .ghost{background:transparent;border:1px solid var(--border);color:var(--txt2);
+    border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit;margin-top:10px}
+  #log{font-size:12px;color:var(--muted);white-space:pre-wrap;margin-top:14px;line-height:1.7;
+    background:var(--surface);border-radius:8px;padding:12px;max-height:180px;overflow-y:auto;display:none}
+  table{width:100%;border-collapse:collapse;margin-top:18px;font-size:12.5px}
+  th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--border)}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted);font-weight:normal;font-size:11px}
+  .total-row td{color:var(--accent);font-weight:bold}
+  footer{text-align:center;font-size:11px;color:#59545A;padding:32px 20px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">KAMITSUBAKI CENSUS</div>
+    <h1>神椿全数調査</h1>
+    <p class="sub">各チャンネルの全動画を取得し、タイトルからオリジナル/カバー/ライブ等を分類します。
+    APIキーはこの端末にのみ保存され、通信はGoogleのAPIとの間だけで行われます。</p>
+  </header>
+
+  <label>YouTube Data API v3 キー</label>
+  <input id="key" placeholder="AIza…" autocomplete="off">
+
+  <label>チャンネル(ID または @ハンドル)— 空欄はスキップ</label>
+  <input id="ch0" value="@VWPVirtualWitchPhenomenon" data-name="V.W.P">
+  <input id="ch1" value="UCQ1U65-CQdIoZ2_NA4Z4F7A" data-name="花譜" style="margin-top:8px">
+  <input id="ch2" value="@isekaijoucho" data-name="ヰ世界情緒" style="margin-top:8px">
+  <input id="ch3" value="" placeholder="理芽 (@ハンドルを貼る)" data-name="理芽" style="margin-top:8px">
+  <input id="ch4" value="" placeholder="春猿火 (@ハンドルを貼る)" data-name="春猿火" style="margin-top:8px">
+  <input id="ch5" value="" placeholder="幸祜 (@ハンドルを貼る)" data-name="幸祜" style="margin-top:8px">
+
+  <button class="primary" id="run">調査開始</button>
+  <div id="log"></div>
+  <div id="result"></div>
+  <button class="ghost" id="dl" style="display:none">全データをJSONでダウンロード</button>
+</div>
+<footer>取得は読み取りのみ。無料枠(1日10,000ユニット)に対し、全6チャンネルでも100ユニット程度です。</footer>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const log = m => { const el=$("log"); el.style.display="block"; el.textContent += m+"\n"; el.scrollTop=el.scrollHeight; };
+  let allData = {};
+
+  // 保存済みキーの復元
+  try { const k = localStorage.getItem("yt-api-key"); if (k) $("key").value = k; } catch(e){}
+
+  // タイトル分類(順序が重要: shorts → カバー → オリジナル → ライブ → その他)
+  function classify(t){
+    if (/#shorts/i.test(t)) return "shorts";
+    if (/歌ってみた|covered\s*by|うたうよ|【cover】|\bcover\b/i.test(t)) return "cover";
+    if (/オリジナルMV|Original\s*MV|Official\s*Music\s*Video|オリジナル曲|オリジナル楽曲/i.test(t)){
+      if (/Live\s*Ver|LIVE\s*MV|from\s|ライブVer/i.test(t)) return "live_ver";
+      return "original";
+    }
+    if (/LIVE|ライブ|生配信|配信|ラジオ|無電|トーク|告知|Trailer|ティザー|MV予告|試聴|XFD|お知らせ|グッズ/i.test(t)) return "other";
+    return "unknown";
+  }
+
+  async function api(path, params){
+    const q = new URLSearchParams({...params, key: $("key").value.trim()});
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/${path}?${q}`);
+    if (!res.ok){
+      const body = await res.json().catch(() => ({}));
+      throw new Error(`${res.status}: ${body?.error?.message || "APIエラー"}`);
+    }
+    return res.json();
+  }
+
+  async function resolveUploads(input){
+    const p = input.startsWith("UC")
+      ? { part:"contentDetails,snippet", id: input }
+      : { part:"contentDetails,snippet", forHandle: input.replace(/^@/,"") };
+    const j = await api("channels", p);
+    if (!j.items || !j.items.length) throw new Error("チャンネルが見つかりません: " + input);
+    return { uploads: j.items[0].contentDetails.relatedPlaylists.uploads,
+             title: j.items[0].snippet.title };
+  }
+
+  async function fetchAll(playlistId){
+    let items = [], token = "";
+    do {
+      const j = await api("playlistItems", {
+        part: "snippet,contentDetails", playlistId, maxResults: 50,
+        ...(token ? {pageToken: token} : {})
+      });
+      for (const it of j.items){
+        items.push({
+          title: it.snippet.title,
+          published: (it.contentDetails.videoPublishedAt || it.snippet.publishedAt || "").slice(0,10),
+          id: it.contentDetails.videoId,
+        });
+      }
+      token = j.nextPageToken || "";
+    } while (token);
+    return items;
+  }
+
+  $("run").addEventListener("click", async () => {
+    const key = $("key").value.trim();
+    if (!key){ alert("APIキーを入力してください。"); return; }
+    try { localStorage.setItem("yt-api-key", key); } catch(e){}
+    $("run").disabled = true;
+    $("log").textContent = "";
+    allData = {};
+    const CATS = ["original","cover","live_ver","shorts","other","unknown"];
+    const CAT_JP = {original:"オリ曲", cover:"カバー", live_ver:"Live版", shorts:"shorts", other:"その他", unknown:"要確認"};
+    let html = `<table><tr><th>チャンネル</th>${CATS.map(c=>`<th>${CAT_JP[c]}</th>`).join("")}<th>総数</th></tr>`;
+    const sums = Object.fromEntries(CATS.map(c=>[c,0]));
+    let grand = 0;
+
+    for (let i = 0; i < 6; i++){
+      const input = $("ch"+i).value.trim();
+      const name = $("ch"+i).dataset.name;
+      if (!input) continue;
+      try {
+        log(`${name}: チャンネル解決中…`);
+        const { uploads, title } = await resolveUploads(input);
+        log(`${name}: 「${title}」の全動画を取得中…`);
+        const vids = await fetchAll(uploads);
+        for (const v of vids) v.cat = classify(v.title);
+        allData[name] = { channelTitle: title, videos: vids };
+        const c = Object.fromEntries(CATS.map(k=>[k,0]));
+        for (const v of vids) c[v.cat]++;
+        for (const k of CATS) sums[k] += c[k];
+        grand += vids.length;
+        log(`${name}: ${vids.length}本 (オリ曲${c.original} / カバー${c.cover} / Live版${c.live_ver} / 要確認${c.unknown})`);
+        html += `<tr><td>${name}</td>${CATS.map(k=>`<td>${c[k]}</td>`).join("")}<td>${vids.length}</td></tr>`;
+      } catch(e){
+        log(`${name}: 失敗 — ${e.message}`);
+      }
+    }
+    html += `<tr class="total-row"><td>合計</td>${CATS.map(k=>`<td>${sums[k]}</td>`).join("")}<td>${grand}</td></tr></table>`;
+    $("result").innerHTML = html;
+    $("dl").style.display = grand ? "inline-block" : "none";
+    $("run").disabled = false;
+    if (grand) log("完了。JSONをダウンロードして、分析に渡してください。");
+  });
+
+  $("dl").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(allData)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const d = new Date();
+    a.download = `kamitsubaki_census_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+})();
+</script>
+</body>
+</html>
